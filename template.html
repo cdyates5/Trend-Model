@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S&P 500 Momentum/Trend Aggregator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--paper:#F7F1E6;--card:#FDFAF3;--ink:#221C14;--orange:#D2622A;--teal:#0E756C;--ochre:#A67A22;--plum:#7A4A66;--slate:#4E6577;--line:#E4D9C3;--mute:#766C5E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 22px 60px}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif;margin:0;letter-spacing:-.01em}
+h1{font-size:30px;font-weight:700}
+h2{font-size:19px;font-weight:600}
+.sub{color:var(--mute);font-size:13.5px;margin-top:3px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:18px}
+header .asof{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--mute);text-align:right}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+.kpi .lab{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute);font-weight:600}
+.kpi .val{font-family:'IBM Plex Mono',monospace;font-size:27px;font-weight:500;margin-top:2px}
+.kpi .val small{font-size:14px;color:var(--mute)}
+.kpi .note{font-size:12.5px;color:var(--mute);margin-top:2px}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;border-radius:99px;padding:1px 9px;border:1px solid currentColor;vertical-align:middle;white-space:nowrap;font-family:'IBM Plex Sans',sans-serif}
+.pill.bad{color:var(--orange)}.pill.good{color:var(--teal)}.pill.neu{color:var(--slate)}.pill.dim{color:var(--mute)}
+.read{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:8px;padding:14px 18px;margin-bottom:18px}
+.read p{margin:0 0 7px}.read p:last-child{margin:0}
+.bar{display:flex;align-items:center;gap:8px;margin:0 0 12px;position:sticky;top:0;background:var(--paper);padding:8px 0;z-index:5;flex-wrap:wrap}
+.bar span{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-right:4px}
+.bar span.gap{margin-left:18px}
+button.b{font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:4px 12px;cursor:pointer}
+button.b.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.picker{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px 18px 12px;margin-bottom:16px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:9px 0 4px;font-size:12.5px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend i.ln{height:2px;vertical-align:4px;width:16px;border-radius:0}
+.legend i.band{border:1px solid var(--line)}
+.cv{position:relative;width:100%}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute);text-align:right;font-weight:600;padding:6px 8px;border-bottom:1.5px solid var(--ink);vertical-align:bottom}
+td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+td.t,th.t{font-family:'IBM Plex Sans',sans-serif;font-size:13px;text-align:left}
+td.t small{display:block;color:var(--mute);font-size:11.5px;line-height:1.35}
+td small.off{color:var(--mute)}
+tr.grp td{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12.5px;background:#F3EBDB;text-align:left;letter-spacing:.02em}
+tr.base td{color:var(--mute)}
+tr.pass td:first-child{box-shadow:inset 3px 0 0 var(--teal)}
+tr.weak td:first-child{box-shadow:inset 3px 0 0 var(--ochre)}
+tr.none td:first-child{box-shadow:inset 3px 0 0 var(--line)}
+tr.hi td{background:#F3EBDB}
+.tw{overflow-x:auto}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.notes{font-size:13.5px}
+.notes li{margin-bottom:6px}
+.fn{font-size:12.5px;color:var(--mute);margin:8px 0 0}
+a{color:var(--teal)}
+@media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>S&P 500 Momentum/Trend Aggregator</h1>
+    <div class="sub">Nine trend, participation and internal-momentum conditions, counted as states and judged on risk-adjusted returns</div>
+  </div>
+  <div class="asof" id="asof"></div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+<div class="read" id="read"></div>
+
+<div class="bar"><span>Window</span><button class="b on" data-r="5Y">5Y</button><button class="b" data-r="10Y">10Y</button><button class="b" data-r="MAX">Max</button>
+  <span class="gap">Conditions</span><button class="b on" data-m="all"></button><button class="b" data-m="price"></button><button class="b" data-m="breadth"></button></div>
+
+<div class="card">
+  <h2>Momentum/Trend Aggregator</h2>
+  <div class="sub" id="sub1"></div>
+  <div class="legend" id="lg1"></div>
+  <div class="cv" id="cv1" style="height:760px"><canvas id="c1"></canvas></div>
+  <p class="fn" id="fn1"></p>
+</div>
+
+<div class="card">
+  <h2>Condition board</h2>
+  <div class="sub">Where each condition stands at the latest close. Unlike the thrust and buy-signal models these are states, not dated events: a condition is on for as long as it holds, with no fixed hold window.</div>
+  <div class="tw"><table id="tB"></table></div>
+  <p class="fn" id="fnB"></p>
+</div>
+
+<div class="card">
+  <h2>Condition inputs</h2>
+  <div class="sub">The indicator behind each condition, sampled at week-end, with its threshold. Shading marks the weeks the condition was on.</div>
+  <div class="picker" id="picker"></div>
+  <div class="legend" id="lg2"></div>
+  <div class="cv" style="height:520px"><canvas id="c2"></canvas></div>
+  <p class="fn" id="fn2"></p>
+</div>
+
+<div class="card">
+  <h2>Which conditions carry evidence</h2>
+  <div class="sub" id="subE"></div>
+  <div class="tw"><table id="tE"></table></div>
+  <p class="fn" id="fnE"></p>
+</div>
+
+<div class="cols">
+  <div class="card">
+    <h2>Does the score matter?</h2>
+    <div class="sub" id="subS1"></div>
+    <div class="tw"><table id="tS1"></table></div>
+    <p class="fn" id="fnS1"></p>
+  </div>
+  <div class="card">
+    <h2>The score as a risk filter</h2>
+    <div class="sub">Long the S&P 500 while yesterday's smoothed score was at least <i>k</i>, otherwise in 13-week Treasury bills.</div>
+    <div class="tw"><table id="tF"></table></div>
+    <div class="legend" id="lg5"></div>
+    <div class="cv" style="height:260px"><canvas id="c5"></canvas></div>
+    <p class="fn" id="fnF"></p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>How much does the length of the average matter?</h2>
+  <div class="sub" id="sub3"></div>
+  <div class="legend" id="lg3"></div>
+  <div class="cv" style="height:360px"><canvas id="c3"></canvas></div>
+  <p class="fn" id="fn3"></p>
+</div>
+
+<div class="card">
+  <h2>McClellan Summation Index regimes</h2>
+  <div class="sub" id="sub4"></div>
+  <div class="legend" id="lg4"></div>
+  <div class="cv" style="height:340px"><canvas id="c4"></canvas></div>
+  <div class="tw" style="margin-top:12px"><table id="tM"></table></div>
+  <p class="fn" id="fnM"></p>
+</div>
+
+<div class="card">
+  <h2>Thin participation near a 5-year high</h2>
+  <div class="sub" id="subW"></div>
+  <div class="tw"><table id="tW"></table></div>
+  <p class="fn" id="fnW"></p>
+</div>
+
+<div class="card">
+  <h2>Recent state changes</h2>
+  <div class="sub">Every change in the nine-condition state since <span id="logFrom"></span>. Forward returns are S&P 500 price returns from the close on the day of the change.</div>
+  <div class="tw"><table id="tL"></table></div>
+</div>
+
+<div class="card notes">
+  <h2>Method and caveats</h2>
+  <ul id="notes"></ul>
+</div>
+</div>
+
+<script>
+const P = /*@DATA*/null/*@END*/;
+const K = {paper:'#F7F1E6',card:'#FDFAF3',ink:'#221C14',orange:'#D2622A',teal:'#0E756C',ochre:'#A67A22',plum:'#7A4A66',slate:'#4E6577',grid:'#EBE2CF',mute:'#766C5E',stone:'#8A7F6E',
+  bandBad:'#D2622A2E',bandGood:'#0E756C2B',bandOn:'#7A4A6622'};
+const MONO = "'IBM Plex Mono', monospace", SANS = "'IBM Plex Sans', sans-serif";
+Chart.defaults.font.family = SANS; Chart.defaults.font.size = 12; Chart.defaults.color = K.mute; Chart.defaults.animation = false;
+
+// ---------- formatting ----------
+const MIN = '−';
+const sgn = (v, d=1) => v == null ? '–' : (v < 0 ? MIN : '+') + Math.abs(v).toFixed(d);
+const pc = (v, d=1) => v == null ? '–' : sgn(v, d) + '%';
+const nm = (v, d=0) => v == null ? '–' : (v < 0 ? MIN : '') + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dfmt = s => s ? (+s.slice(8,10)) + ' ' + MON[+s.slice(5,7)-1] + ' ' + s.slice(0,4) : '–';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const neg = s => String(s).replace(/-(\d)/g, MIN + '$1');
+const pair = (a, b, f=pc) => f(a) + ' <small class="off">/ ' + f(b) + '</small>';
+
+const N = P.now, M = P.meta, LEGS = P.legs, B = P.bases['2000'], SM = P.sma, F = P.filt;
+const FAM = {'Price trend':K.plum, 'Participation':K.teal, 'Internal momentum':K.ochre};
+const stName = {1:'Strong', 0:'Mixed', '-1':'Broken'}, stCls = {1:'good', 0:'neu', '-1':'bad'};
+const gradeTxt = {pass:'Passes', weak:'Partial', none:'No edge'}, gradeCls = {pass:'good', weak:'neu', none:'dim'};
+const EV = {all:P.ev_all, price:P.ev_price, breadth:P.ev_breadth};
+const CNT = {all:P.cnt, price:P.cntp, breadth:P.cntb}, ST = {all:P.st, price:P.stp, breadth:P.stb};
+const leg = k => LEGS.find(l => l.key === k);
+
+// ---------- header, tiles, read ----------
+$('asof').innerHTML = 'Data to ' + dfmt(M.asof) + ' close<br>built ' + esc(M.built);
+$('logFrom').textContent = dfmt(M.evid_start);
+document.querySelectorAll('.bar button[data-m]').forEach(b => { b.textContent = M.modes[b.dataset.m].label; });
+const maLeg = leg('ma');
+$('kpis').innerHTML = [
+  ['Aggregator score', N.cnt + '<small> of ' + M.n_legs + '</small>', '<span class="pill ' + stCls[N.st] + '">' + stName[N.st] + '</span> since ' + dfmt(N.st_since) + ' · ' + M.smooth + '-session average ' + nm(N.sm, 1)],
+  ['Primary guides', N.primary + '<small> of ' + N.n_primary + '</small>', 'Price trend ' + N.cntp + ' of ' + M.modes.price.keys.length + ', participation and momentum ' + N.cntb + ' of ' + M.modes.breadth.keys.length],
+  ['Price vs the 150–200 day band', (maLeg.state ? 'Above' : 'Below'), esc(neg(maLeg.status)) + '; ' + nm(Math.abs(N.below5y), 1) + '% below the 5-year high'],
+  ['Long-term participation', nm(N.p200, 1) + '<small>%</small>', nm(N.r200, 1) + '% with a rising 200-day average' + (N.thin ? ' · <span class="pill bad">thin near a high</span>' : '')],
+].map(k => '<div class="kpi"><div class="lab">' + k[0] + '</div><div class="val">' + k[1] + '</div><div class="note">' + k[2] + '</div></div>').join('');
+
+(function read(){
+  const on = LEGS.filter(l => l.state), off = LEGS.filter(l => !l.state), E = P.ev_all;
+  const lc = N.last_change;
+  let p1 = '<b>Score ' + N.cnt + ' of ' + M.n_legs + ', state ' + stName[N.st].toLowerCase() + ' since ' + dfmt(N.st_since) + '.</b> ';
+  p1 += on.length ? 'On: ' + on.map(l => esc(l.short)).join(', ') + '. ' : 'No condition is on. ';
+  p1 += off.length ? 'Off: ' + off.map(l => esc(l.short)).join(', ') + '. ' : 'Every condition is on. ';
+  p1 += 'Of the five primary guides in the checklist, ' + N.primary + ' hold. ';
+  if (lc) p1 += 'The state last changed on ' + dfmt(lc.d) + ', from ' + stName[lc.frm].toLowerCase() + ' after ' + lc.days + ' sessions.';
+  let p2 = '<b>What the states have meant since ' + M.evid_start.slice(0,4) + ', on a no-look-ahead basis.</b> ' +
+    'Strong days (' + M.smooth + '-session average score of ' + M.strong_at + ' or more) ran at ' + pc(E.strong.all.ann) + ' a year with ' + nm(E.strong.all.vol, 1) + '% volatility and a worst drawdown of ' + pc(E.strong.all.dd) + ', a Sharpe of ' + nm(E.strong.all.sharpe, 2) + '. ' +
+    'Broken days returned more, ' + pc(E.broken.all.ann) + ', but at ' + nm(E.broken.all.vol, 1) + '% volatility and ' + pc(E.broken.all.dd) + ' drawdown. Mixed days were the worst of both: ' + pc(E.mixed.all.ann) + ' at ' + nm(E.mixed.all.vol, 1) + '%. ' +
+    'All days: ' + pc(B.ann) + ', ' + nm(B.vol, 1) + '%, Sharpe ' + nm(B.sharpe, 2) + '. The score separates <i>risk</i> cleanly and <i>return</i> barely at all.';
+  const nPass = LEGS.filter(l => l.grade === 'pass').length, nWeak = LEGS.filter(l => l.grade === 'weak').length;
+  let p3 = '<b>The edge sits in the index-level trend conditions, not in participation.</b> ' +
+    'Price above its 150–200 day band is the strongest single condition: Sharpe ' + nm(leg('ma').on.sharpe, 2) + ' against ' + nm(leg('ma').off.sharpe, 2) + ' when it is off, with a placebo p-value of ' + nm(leg('ma').pl, 3) + '. ' +
+    'Every member-breadth condition runs the other way — ' + ['p200','r200','msi','nhnl'].map(k => esc(leg(k).short) + ' ' + nm(leg(k).on.sharpe, 2) + ' against ' + nm(leg(k).off.sharpe, 2)).join(', ') + ' — because they switch off at washout lows that rebound hardest. ' +
+    'Of the ' + M.n_legs + ', ' + nPass + ' pass the screen outright and ' + nWeak + ' pass partially.';
+  $('read').innerHTML = '<p>' + p1 + '</p><p>' + p2 + '</p><p>' + p3 + '</p>';
+  $('read').style.borderLeftColor = N.st === 1 ? K.teal : N.st === -1 ? K.orange : K.slate;
+})();
+
+// ---------- chart plumbing ----------
+let RANGE = '5Y', MODE = 'all', DET = 'hhhl', charts = {};
+function startIdx(dates){
+  const n = dates.length; if (RANGE === 'MAX') return 0;
+  const last = dates[n-1], cut = (+last.slice(0,4) - (RANGE === '5Y' ? 5 : 10)) + last.slice(4);
+  const i = dates.findIndex(d => d >= cut); return i < 0 ? 0 : i;
+}
+function spans(a, test){ const out = []; let s = -1; for (let i = 0; i < a.length; i++){ const t = test(a[i]); if (t && s < 0) s = i; if (!t && s >= 0){ out.push([s, i-1]); s = -1; } } if (s >= 0) out.push([s, a.length-1]); return out; }
+function yearTicks(labels){
+  const idx = []; for (let i = 1; i < labels.length; i++) if (labels[i].slice(0,4) !== labels[i-1].slice(0,4)) idx.push(i);
+  const step = Math.max(1, Math.ceil(idx.length / 14)); return idx.filter((_, k) => (idx.length - 1 - k) % step === 0);
+}
+const NICE = [300,400,500,600,700,800,1000,1250,1500,2000,2500,3000,3500,4000,5000,6000,7000,8000,10000,12000,15000,20000,25000,30000,40000,50000,80000];
+const bandPlugin = {id:'bands', beforeDatasetsDraw(ch, _a, o){
+  if (!o || !o.bands) return; const {ctx, chartArea:a, scales:{x}} = ch; const half = (a.right - a.left) / Math.max(1, ch.data.labels.length - 1) / 2;
+  const top = o.top ? ch.scales[o.top].top : a.top, bot = o.bottom ? ch.scales[o.bottom].bottom : a.bottom;
+  ctx.save(); o.bands.forEach(b => { ctx.fillStyle = b.color; b.spans.forEach(([s, e]) => { const x0 = Math.max(a.left, x.getPixelForValue(s) - half), x1 = Math.min(a.right, x.getPixelForValue(e) + half); ctx.fillRect(x0, top, x1 - x0, bot - top); }); }); ctx.restore(); }};
+const crossPlugin = {id:'cross', afterDatasetsDraw(ch){ const t = ch.tooltip; if (!t || !t.getActiveElements().length) return; const {ctx, chartArea:a} = ch; const xp = t.getActiveElements()[0].element.x;
+  ctx.save(); ctx.strokeStyle = '#221C1466'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xp, a.top); ctx.lineTo(xp, a.bottom); ctx.stroke(); ctx.restore(); }};
+const endPlugin = {id:'endlab', afterDatasetsDraw(ch, _a, o){ if (!o || !o.items) return; const {ctx} = ch; ctx.save(); ctx.font = "500 12px " + MONO; ctx.textBaseline = 'middle';
+  o.items.forEach(it => { const m = ch.getDatasetMeta(it.ds); if (!m.data.length || m.hidden) return; const p = m.data[m.data.length-1]; ctx.fillStyle = it.color || K.ink; ctx.fillText(it.text, p.x + 6, p.y); }); ctx.restore(); }};
+const refPlugin = {id:'refs', afterDatasetsDraw(ch, _a, o){ if (!o || !o.lines) return; const {ctx, chartArea:a} = ch; ctx.save();
+  o.lines.forEach(l => { const sc = ch.scales[l.axis]; if (l.v < sc.min || l.v > sc.max) return; const y = sc.getPixelForValue(l.v); ctx.strokeStyle = l.color; ctx.lineWidth = 1; ctx.setLineDash(l.solid ? [] : [5,4]); ctx.beginPath(); ctx.moveTo(a.left, y); ctx.lineTo(a.right, y); ctx.stroke();
+    if (l.text){ ctx.setLineDash([]); ctx.font = '11px ' + SANS; ctx.textBaseline = 'bottom'; ctx.textAlign = l.align || 'left';
+      const tx = l.align === 'right' ? a.right - 4 : a.left + 5, w = ctx.measureText(l.text).width;
+      ctx.fillStyle = K.card + 'DD'; ctx.fillRect((l.align === 'right' ? tx - w : tx) - 3, y - 14, w + 6, 13);
+      ctx.fillStyle = K.mute; ctx.fillText(l.text, tx, y - 2); } });
+  ctx.restore(); }};
+const lanePlugin = {id:'lanes', beforeDatasetsDraw(ch, _a, o){ if (!o || !o.lanes) return; const {ctx, chartArea:a, scales:{x}} = ch; const sc = ch.scales[o.axis]; const half = (a.right - a.left) / Math.max(1, ch.data.labels.length - 1) / 2;
+  const n = o.lanes.length, h = (sc.bottom - sc.top) / n; ctx.save();
+  o.lanes.forEach((ln, k) => { const y = sc.top + k * h; ctx.fillStyle = '#EFE7D6'; ctx.fillRect(a.left, y + h * .5 - .5, a.right - a.left, 1); ctx.fillStyle = ln.color;
+    if (ln.rule){ ctx.fillStyle = K.ink; ctx.fillRect(a.left, y - .5, a.right - a.left, 1); ctx.fillStyle = ln.color; }
+    ln.spans.forEach(([s, e]) => { const x0 = Math.max(a.left, x.getPixelForValue(s) - half), x1 = Math.min(a.right, x.getPixelForValue(e) + half); ctx.fillRect(x0, y + h * .2, Math.max(1.5, x1 - x0), h * .6); });
+    ctx.font = (ln.bold ? '600 ' : '') + '11px ' + SANS; ctx.fillStyle = ln.dim ? K.mute : K.ink; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(ln.label, a.left - 8, y + h / 2); });
+  ctx.restore(); }};
+Chart.register(bandPlugin, crossPlugin, endPlugin, refPlugin, lanePlugin);
+
+function xAxis(labels, yearly){ const yt = yearTicks(labels); return {type:'category', grid:{display:false}, border:{color:K.ink}, ticks:{autoSkip:false, maxRotation:0, font:{family:MONO, size:11.5}, callback(v){ return labels[v] ? String(labels[v]).slice(0,4) : ''; }}, afterBuildTicks(ax){ ax.ticks = yt.map(i => ({value:i})); }}; }
+function priceAxis(px, weight, title){ const v = px.filter(x => x != null), lo = Math.min(...v) * .96, hi = Math.max(...v) * 1.04;
+  return {type:'logarithmic', position:'left', stack:'s', stackWeight:weight, min:lo, max:hi, grid:{color:K.grid}, border:{display:false}, title:{display:true, text:title || 'S&P 500 (log)', font:{size:11}},
+    ticks:{font:{family:MONO, size:11}, callback:v => nm(v)}, afterBuildTicks(ax){ let t = NICE.filter(n => n >= lo && n <= hi); if (t.length > 8) t = t.filter((_, k) => k % 2 === (t.length - 1) % 2); ax.ticks = t.map(n => ({value:n})); }}; }
+function panelAxis(o){ return Object.assign({type:'linear', position:'left', stack:'s', stackWeight:1, grid:{color:K.grid}, border:{display:false}, ticks:{font:{family:MONO, size:11}}}, o); }
+const area = (label, data, color, extra) => Object.assign({type:'line', label, data, backgroundColor:color, borderColor:color, borderWidth:0, pointRadius:0, pointHoverRadius:0, stepped:true, fill:true}, extra);
+const line = (label, data, color, extra) => Object.assign({type:'line', label, data, borderColor:color, backgroundColor:color, borderWidth:1.6, pointRadius:0, pointHoverRadius:3, fill:false, tension:0, spanGaps:true}, extra);
+const tipBase = {mode:'index', intersect:false, backgroundColor:K.ink, titleColor:K.paper, bodyColor:K.paper, footerColor:K.paper, titleFont:{family:MONO, size:12}, bodyFont:{family:SANS, size:12}, footerFont:{family:SANS, size:12, weight:'500'}, padding:10, boxWidth:9, boxHeight:9, usePointStyle:false, displayColors:true};
+function legend(id, items){ $(id).innerHTML = items.map(it => '<span><i class="' + (it.ln ? 'ln' : it.band ? 'band' : '') + '" style="background:' + it.c + '"></i>' + it.t + '</span>').join(''); }
+function mk(id, cfg){ if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), cfg); return charts[id]; }
+const common = (labels, scales, plugins, padL) => ({maintainAspectRatio:false, responsive:true, layout:{padding:{right:62, left:padL || 4, top:4}}, interaction:{mode:'index', intersect:false}, scales:Object.assign({x:xAxis(labels)}, scales), plugins:Object.assign({legend:{display:false}}, plugins)});
+
+// ---------- 1. the aggregator ----------
+function drawAgg(){
+  const i0 = startIdx(P.d), sl = a => a.slice(i0);
+  const L = sl(P.d), px = sl(P.spx), md = M.modes[MODE];
+  const cnt = sl(CNT[MODE]), st = sl(ST[MODE]), thr = md.hi, nL = md.keys.length;
+  const legs = LEGS.filter(l => md.keys.includes(l.key));
+  $('sub1').textContent = 'Count of conditions on, out of ' + nL + '. The state is strong when the ' + M.smooth + '-session average score is ' + md.hi + ' or more, broken when it is ' + md.lo + ' or less, mixed in between.';
+  legend('lg1', [{c:K.ink, t:'S&P 500', ln:1}, {c:'#7A4A66CC', t:'Conditions on (score)'}, {c:K.bandGood, t:'Strong state', band:1}, {c:K.bandBad, t:'Broken state', band:1}]
+    .concat(Object.keys(FAM).filter(f => legs.some(l => l.family === f)).map(f => ({c:FAM[f], t:f}))).concat([{c:K.orange, t:'Near a 5-year high on thin participation'}]));
+  const lanes = legs.map(l => ({label:l.short, color:FAM[l.family], dim:l.grade === 'none', spans:spans(sl(P.on[l.key]), v => v === 1)}))
+    .concat([{label:'Thin near a high', color:K.orange, rule:1, spans:spans(sl(P.thin), v => v === 1)}]);
+  $('cv1').style.height = (400 + lanes.length * 30) + 'px';
+  const ymax = nL + .4;
+  mk('c1', {data:{labels:L, datasets:[
+      line('S&P 500', px, K.ink, {yAxisID:'yP'}),
+      area('Score', cnt, '#7A4A66CC', {yAxisID:'yC', borderColor:K.plum, borderWidth:1.2})]},
+    options:common(L, {
+        yL:panelAxis({min:0, max:1, stackWeight:lanes.length * .30, grid:{display:false}, ticks:{display:false}, title:{display:false}}),
+        yC:panelAxis({min:0, max:ymax, stackWeight:1.6, title:{display:true, text:'Score', font:{size:11}}, ticks:{stepSize:nL > 6 ? 2 : 1, font:{family:MONO, size:11}, callback:v => Number.isInteger(v) ? v : ''}}),
+        yP:priceAxis(px, 2.6)},
+      {bands:{top:'yP', bottom:'yC', bands:[{color:K.bandGood, spans:spans(st, v => v === 1)}, {color:K.bandBad, spans:spans(st, v => v === -1)}]},
+       endlab:{items:[{ds:0, text:nm(px[px.length-1])}]},
+       lanes:{axis:'yL', lanes},
+       refs:{lines:[{axis:'yC', v:thr, color:K.teal, text:'Strong at ' + thr + '+', align:'right'}]},
+       tooltip:Object.assign({}, tipBase, {callbacks:{title:it => dfmt(L[it[0].dataIndex]), label:c => c.datasetIndex === 0 ? ' S&P 500  ' + nm(c.raw, 2) : ' Score  ' + c.raw + ' of ' + nL,
+         footer:it => { const i = it[0].dataIndex, on = legs.filter(l => P.on[l.key][i0 + i] === 1).map(l => l.short);
+           return (on.length ? on.join(', ') + '\n' : 'nothing on\n') + 'State: ' + stName[st[i]] + (P.thin[i0 + i] ? '\nThin participation near a 5-year high' : ''); }}})}, 108)});
+  $('fn1').textContent = 'Lane labels in grey are conditions that do not pass the evidence screen. The orange lane is not a condition: it marks days the index was within 3% of a 5-year high while fewer than 57% of members had a rising 200-day average.';
+}
+
+// ---------- 2. condition inputs ----------
+function drawDet(){
+  const D = P.detail[DET], lg = leg(DET), i0 = startIdx(P.wd);
+  const L = P.wd.slice(i0), px = P.wspx.slice(i0), onArr = D.on.slice(i0);
+  const ds = [line('S&P 500', px, K.ink, {yAxisID:'yP'})].concat(D.series.map(s => line(s[0], s[1].slice(i0), s[2], {yAxisID:'yI', borderWidth:1.4, stepped:D.step ? true : false})));
+  const vals = [].concat(...D.series.map(s => s[1].slice(i0))).filter(v => v != null).concat(D.refs.map(r => r[0]));
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo) * .06 || 1; lo -= pad; hi += pad;
+  legend('lg2', [{c:K.ink, t:'S&P 500', ln:1}].concat(D.series.map(s => ({c:s[2], t:esc(s[0]), ln:1}))).concat([{c:K.bandOn, t:esc(lg.name) + ' on', band:1}]));
+  mk('c2', {data:{labels:L, datasets:ds},
+    options:common(L, {yI:panelAxis({min:lo, max:hi, stackWeight:2, ticks:{font:{family:MONO, size:11}, callback:v => nm(v, Math.abs(hi - lo) < 5 ? 2 : 0)}}), yP:priceAxis(px, 2)},
+      {endlab:{items:[{ds:0, text:nm(px[px.length-1])}]},
+       bands:{top:'yP', bottom:'yI', bands:[{color:K.bandOn, spans:spans(onArr, v => v === 1)}]},
+       refs:{lines:D.refs.map(r => ({axis:'yI', v:r[0], color:K.mute, text:neg(r[1])}))},
+       tooltip:Object.assign({}, tipBase, {callbacks:{title:it => 'Week to ' + dfmt(L[it[0].dataIndex]), label:c => ' ' + c.dataset.label + '  ' + (c.raw == null ? '–' : nm(c.raw, c.datasetIndex === 0 ? 0 : Math.abs(c.raw) < 10 ? 2 : 1)),
+         footer:it => onArr[it[0].dataIndex] ? 'Condition on' : 'Condition off'}})})});
+  $('fn2').innerHTML = '<b>' + esc(lg.name) + '.</b> ' + esc(neg(lg.rule)) + '. Now: ' + esc(neg(lg.status)) + '.';
+  document.querySelectorAll('#picker button').forEach(b => b.classList.toggle('on', b.dataset.k === DET));
+}
+$('picker').innerHTML = LEGS.map(l => '<button class="b" data-k="' + l.key + '">' + esc(l.short) + '</button>').join('');
+$('picker').addEventListener('click', e => { const k = e.target.dataset && e.target.dataset.k; if (k){ DET = k; drawDet(); } });
+document.querySelectorAll('.bar button[data-r]').forEach(b => b.addEventListener('click', () => { RANGE = b.dataset.r; document.querySelectorAll('.bar button[data-r]').forEach(x => x.classList.toggle('on', x === b)); drawAgg(); drawDet(); }));
+document.querySelectorAll('.bar button[data-m]').forEach(b => b.addEventListener('click', () => { MODE = b.dataset.m; document.querySelectorAll('.bar button[data-m]').forEach(x => x.classList.toggle('on', x === b)); drawAgg(); stateTable(); }));
+
+// ---------- 3. the moving-average study ----------
+(function drawSMA(){
+  const rows = SM.rows, L = rows.map(r => r.n).concat(['BH']);
+  const inBand = r => r.n >= 130 && r.n <= 200;
+  const data = rows.map(r => r.sharpe).concat([SM.bh.sharpe]);
+  const cols = rows.map(r => inBand(r) ? K.ochre : K.teal).concat([K.slate]);
+  $('sub3').innerHTML = 'A replication of the 3Fourteen Research study: long the S&P 500 whenever it closes above its <i>n</i>-day average, otherwise in 13-week Treasury bills, for every <i>n</i> from 10 to 305. Sharpe ratio of excess returns since ' + dfmt(SM.start) + '.';
+  legend('lg3', [{c:K.ochre, t:'130–200 day'}, {c:K.teal, t:'Other lengths'}, {c:K.slate, t:'Buy and hold'}, {c:K.orange, t:'Buy-and-hold Sharpe', ln:1}]);
+  mk('c3', {data:{labels:L, datasets:[{type:'bar', label:'Sharpe', data, backgroundColor:cols, borderWidth:0, barPercentage:.9, categoryPercentage:.9}]},
+    options:{maintainAspectRatio:false, responsive:true, layout:{padding:{right:10, top:4}}, interaction:{mode:'index', intersect:false},
+      scales:{x:{type:'category', grid:{display:false}, border:{color:K.ink}, ticks:{autoSkip:false, maxRotation:90, minRotation:90, font:{family:MONO, size:9.5}, callback(v){ const l = L[v]; return (l === 'BH' || l % 25 === 0) ? l : ''; }}},
+        y:{type:'linear', grid:{color:K.grid}, border:{display:false}, title:{display:true, text:'Sharpe ratio', font:{size:11}}, ticks:{font:{family:MONO, size:11}, callback:v => nm(v, 2)}}},
+      plugins:{legend:{display:false}, refs:{lines:[{axis:'y', v:SM.bh.sharpe, color:K.orange}]},
+        tooltip:Object.assign({}, tipBase, {callbacks:{title:it => it[0].label === 'BH' ? 'Buy and hold' : it[0].label + '-day average',
+          label:c => { const r = c.dataIndex < rows.length ? rows[c.dataIndex] : SM.bh; return [' Sharpe  ' + nm(r.sharpe, 3), ' Annualised  ' + pc(r.ann), ' Volatility  ' + nm(r.vol, 1) + '%', ' Worst drawdown  ' + pc(r.dd), ' Invested  ' + nm(r.exp) + '% of days']; }}})}}});
+  $('fn3').innerHTML = 'All ' + rows.length + ' lengths beat buy-and-hold on Sharpe, so the finding is about the shape, not the level. The 130–200 day band averages ' + nm(SM.band_mean, 3) + ' against ' + nm(SM.short_mean, 3) + ' for lengths of 50 days or less and ' + nm(SM.bh.sharpe, 3) + ' for buy-and-hold; the single best length is ' + SM.best.n + ' days at ' + nm(SM.best.sharpe, 3) + '. The gain is risk, not return: the band averages a ' + pc(SM.band_dd) + ' worst drawdown against ' + pc(SM.bh.dd) + ' for buy-and-hold.';
+})();
+
+// ---------- 4. Summation regimes ----------
+(function drawMSI(){
+  const R = P.msi_reg, L = P.wd, C = [K.teal, K.ochre, K.slate, K.orange];
+  $('sub4').innerHTML = 'Growth of $10,000 compounded only on the days spent in each regime, since ' + dfmt(M.evid_start) + '. The regime is read at the close and earns the <i>next</i> session’s return.';
+  legend('lg4', R.map((r, i) => ({c:C[i], t:esc(r.label), ln:1})));
+  mk('c4', {data:{labels:L, datasets:R.map((r, i) => line(r.label, r.eq, C[i], {borderWidth:1.5}))},
+    options:common(L, {y:priceAxis([].concat(...R.map(r => r.eq)), 1, 'Growth of $10,000 (log)')},
+      {endlab:{items:R.map((r, i) => ({ds:i, text:nm(r.end), color:C[i]}))},
+       tooltip:Object.assign({}, tipBase, {callbacks:{title:it => 'Week to ' + dfmt(L[it[0].dataIndex]), label:c => ' ' + c.dataset.label + '  $' + nm(c.raw)}})})});
+  let h = '<tr><th class="t">Regime</th><th>% of days</th><th>Annualised<br>next session</th><th>Volatility</th><th>Sharpe</th><th>+12m</th><th>Annualised<br>same session</th>' + M.msi_lags.map(l => '<th>Lagged<br>' + l + 'd</th>').join('') + '</tr>';
+  R.forEach(r => { h += '<tr' + (r.label.indexOf('Above zero and rising') === 0 ? ' class="hi"' : '') + '><td class="t">' + esc(r.label) + '</td><td>' + nm(r.pct, 1) + '</td><td>' + pc(r.ann) + '</td><td>' + nm(r.vol, 1) + '</td><td>' + nm(r.sharpe, 2) + '</td><td>' + pc(r['12m']) + '</td><td>' + pc(r.same) + '</td>' + r.lag.map(v => '<td>' + pc(v) + '</td>').join('') + '</tr>'; });
+  h += '<tr class="base"><td class="t">All days</td><td>100.0</td><td>' + pc(B.ann) + '</td><td>' + nm(B.vol, 1) + '</td><td>' + nm(B.sharpe, 2) + '</td><td>' + pc(B['12m']) + '</td><td colspan="' + (M.msi_lags.length + 1) + '"></td></tr>';
+  $('tM').innerHTML = h;
+  $('fnM').innerHTML = 'The published version of this chart puts <i>above zero and rising</i> far ahead of the other three. On S&P 500 member data since ' + M.evid_start.slice(0,4) + ' it comes last, and it stays last at every lag from one session to ' + M.msi_lags[M.msi_lags.length-1] + '. The same-session column shows why the ordering flips: scoring a breadth measure against the day it is measured on is circular, and it inflates <i>above zero and rising</i> to ' + pc(R[0].same) + ' a year against ' + pc(R[3].same) + ' for <i>below zero and declining</i>. The next-session figures for the two below-zero regimes rest on a handful of rebound days — strip the ten best and <i>below zero and declining</i> falls from ' + pc(R[3].ann) + ' to ' + pc(R[3].ann_ex10) + '.';
+})();
+
+// ---------- 5. the score as a risk filter ----------
+(function drawFilt(){
+  const rows = F.rows, L = P.wd, C = {hold:K.ink, k4:K.teal, k6:K.ochre, k8:K.plum};
+  let h = '<tr><th class="t">Rule</th><th>Annualised</th><th>Volatility</th><th>Sharpe</th><th>Worst<br>drawdown</th><th>Invested</th></tr>';
+  h += '<tr class="base"><td class="t">Buy and hold</td><td>' + pc(F.bh.ann) + '</td><td>' + nm(F.bh.vol, 1) + '</td><td>' + nm(F.bh.sharpe, 2) + '</td><td>' + pc(F.bh.dd) + '</td><td>100%</td></tr>';
+  rows.forEach(r => { const lab = r.k === 'state' ? 'Out only while broken' : 'Score ' + r.k + ' or more';
+    h += '<tr><td class="t">' + lab + '</td><td>' + pc(r.ann) + '</td><td>' + nm(r.vol, 1) + '</td><td>' + nm(r.sharpe, 2) + '</td><td>' + pc(r.dd) + '</td><td>' + nm(r.exp) + '%</td></tr>'; });
+  $('tF').innerHTML = h;
+  legend('lg5', [{c:K.ink, t:'Buy and hold', ln:1}, {c:K.teal, t:'Score 4+', ln:1}, {c:K.ochre, t:'Score 6+', ln:1}, {c:K.plum, t:'Score 8+', ln:1}]);
+  const keys = ['hold','k4','k6','k8'];
+  mk('c5', {data:{labels:L, datasets:keys.map(k => line(k, F.curves[k], C[k], {borderWidth:1.5}))},
+    options:common(L, {y:priceAxis([].concat(...keys.map(k => F.curves[k])), 1, '$10,000 (log)')},
+      {tooltip:Object.assign({}, tipBase, {callbacks:{title:it => 'Week to ' + dfmt(L[it[0].dataIndex]),
+        label:c => ' ' + (c.dataset.label === 'hold' ? 'Buy and hold' : 'Score ' + c.dataset.label.slice(1) + '+') + '  $' + nm(c.raw)}})})});
+  const best = rows.reduce((a, r) => (r.sharpe > a.sharpe ? r : a), rows[0]);
+  $('fnF').innerHTML = 'Every threshold cuts volatility and drawdown hard and gives up a little return. The best Sharpe is a score of ' + best.k + ' or more at ' + nm(best.sharpe, 2) + ' against ' + nm(F.bh.sharpe, 2) + ' for buy-and-hold, with the worst drawdown cut from ' + pc(F.bh.dd) + ' to ' + pc(best.dd) + '. Stepping out only while the state is broken does worse than holding, because the broken state covers the washouts that rebound. Returns are price returns and the rule ignores costs and tax.';
+})();
+
+// ---------- tables ----------
+(function board(){
+  let h = '<tr><th class="t">Condition</th><th class="t">Reading now</th><th>Guide</th><th>Since</th><th>Status</th><th>Screen</th></tr>', fam = '';
+  LEGS.forEach(l => { if (l.family !== fam){ fam = l.family; h += '<tr class="grp"><td colspan="6">' + esc(fam) + '</td></tr>'; }
+    h += '<tr class="' + l.grade + '"><td class="t">' + esc(l.name) + '<small>' + esc(neg(l.rule)) + '</small></td><td class="t">' + esc(neg(l.status)) + '</td><td>' + l.tier + '</td><td>' + dfmt(l.state_since) + '</td><td><span class="pill ' + (l.state ? 'good' : 'bad') + '">' + (l.state ? 'On' : 'Off') + '</span></td><td><span class="pill ' + gradeCls[l.grade] + '">' + gradeTxt[l.grade] + '</span></td></tr>'; });
+  $('tB').innerHTML = h;
+  $('fnB').innerHTML = 'Primary and secondary follow the checklist the conditions come from. Breadth is rebuilt from point-in-time index members on Yahoo prices: ' + M.members_now + ' members now, ' + M.tickers_priced + ' tickers priced across the whole history.';
+})();
+(function evid(){
+  $('subE').innerHTML = 'Each condition read at the close, paired with the <i>next</i> session’s return, over its own history. Pairs are on / <span style="color:#766C5E">off</span>. A condition passes if it raises the Sharpe ratio, does so in both halves of its history, and has a placebo p-value under 0.10.';
+  let h = '<tr><th class="t">Condition</th><th>History</th><th>% of days on</th><th>Annualised</th><th>Volatility</th><th>Sharpe</th><th>Worst<br>drawdown</th><th>+12m</th><th>Placebo p</th><th>Sharpe by half</th><th>Screen</th></tr>';
+  let fam = '';
+  LEGS.forEach(l => { if (l.family !== fam){ fam = l.family; h += '<tr class="grp"><td colspan="11">' + esc(fam) + '</td></tr>'; }
+    const o = l.on, f = l.off, H = l.half;
+    h += '<tr class="' + l.grade + '"><td class="t">' + esc(l.name) + '<small>' + esc(l.src) + '</small></td><td>' + l.since + '+</td><td>' + nm(o.pct, 1) + '</td><td>' + pair(o.ann, f.ann) + '</td><td>' + pair(o.vol, f.vol, v => nm(v, 1)) + '</td><td>' + pair(o.sharpe, f.sharpe, v => nm(v, 2)) + '</td><td>' + pair(o.dd, f.dd) + '</td><td>' + pair(o['12m'], f['12m']) + '</td><td>' + nm(l.pl, 3) + '</td><td>' + pair(H.on_a, H.off_a, v => nm(v, 2)) + '<br>' + pair(H.on_b, H.off_b, v => nm(v, 2)) + '</td><td><span class="pill ' + gradeCls[l.grade] + '">' + gradeTxt[l.grade] + '</span></td></tr>'; });
+  h += '<tr class="base"><td class="t">All days<small>baseline by history window</small></td><td colspan="2"></td><td colspan="8" style="text-align:left">' + Object.keys(P.bases).map(k => k + '+: ' + pc(P.bases[k].ann) + ' a year, ' + nm(P.bases[k].vol, 1) + '% volatility, Sharpe ' + nm(P.bases[k].sharpe, 2) + ', worst drawdown ' + pc(P.bases[k].dd)).join('  ·  ') + '</td></tr>';
+  $('tE').innerHTML = h;
+  $('fnE').innerHTML = 'Placebo p is the share of all circular shifts of the condition that produced at least as high a Sharpe, which keeps the condition’s run lengths intact. Halves split each condition’s own history at its midpoint. The price conditions are tested from ' + M.price_start + ', when the Treasury-bill series starts; the member-breadth conditions from ' + M.evid_start.slice(0,4) + '. Nine conditions tested four ways is a lot of tests, so a single pass is weak evidence.';
+})();
+function stateTable(){
+  const E = EV[MODE], md = M.modes[MODE];
+  $('subS1').innerHTML = 'S&P 500 outcomes from every day spent in each state of the <b>' + esc(md.label.toLowerCase()) + '</b> score, since ' + dfmt(M.evid_start) + '. Use the toggle above to switch.';
+  let h = '<tr><th class="t">State</th><th>% of days</th><th>Annualised</th><th>Volatility</th><th>Sharpe</th><th>Worst<br>drawdown</th><th>+12m <span style="text-transform:none">(higher)</span></th><th>Sharpe<br>2000–12</th><th>Sharpe<br>' + M.split + '+</th></tr>';
+  [['strong','Strong · ' + E.hi + '+ on'],['mixed','Mixed'],['broken','Broken · ' + E.lo + ' or fewer']].forEach(([k, t]) => { const s = E[k];
+    h += '<tr><td class="t">' + t + '</td><td>' + nm(s.all.pct, 1) + '</td><td>' + pc(s.all.ann) + '</td><td>' + nm(s.all.vol, 1) + '</td><td>' + nm(s.all.sharpe, 2) + '</td><td>' + pc(s.all.dd) + '</td><td>' + pc(s.all['12m']) + ' <span style="color:#766C5E">' + s.all.w12m + '%</span></td><td>' + nm(s.h1.sharpe, 2) + '</td><td>' + nm(s.h2.sharpe, 2) + '</td></tr>'; });
+  h += '<tr class="grp"><td colspan="9">By score on the day</td></tr>';
+  E.bycount.forEach(g => { h += '<tr><td class="t">' + g.count + ' of ' + md.keys.length + ' on</td><td>' + nm(g.pct, 1) + '</td><td>' + pc(g.ann) + '</td><td>' + nm(g.vol, 1) + '</td><td>' + nm(g.sharpe, 2) + '</td><td>' + pc(g.dd) + '</td><td>' + pc(g['12m']) + ' <span style="color:#766C5E">' + g.w12m + '%</span></td><td colspan="2"></td></tr>'; });
+  h += '<tr class="base"><td class="t">All days</td><td>100.0</td><td>' + pc(B.ann) + '</td><td>' + nm(B.vol, 1) + '</td><td>' + nm(B.sharpe, 2) + '</td><td>' + pc(B.dd) + '</td><td>' + pc(B['12m']) + ' <span style="color:#766C5E">' + B.w12m + '%</span></td><td colspan="2"></td></tr>';
+  $('tS1').innerHTML = h;
+  $('fnS1').innerHTML = 'Placebo p for the strong state is ' + nm(E.strong.pl, 3) + ' and for the broken state ' + nm(E.broken.pl, 3) + '. Drawdown is measured inside the state only, so it understates what an investor sitting through the gaps would have felt. The score separates volatility and drawdown far more cleanly than it separates return.';
+}
+(function warn(){
+  const W = P.warn;
+  $('subW').innerHTML = 'SentimenTrader’s observation is that the index sitting within 3% of a 5-year high while fewer than 57% of members have a rising 200-day average has preceded declines over the following two to four weeks. Tested the same way as everything else here.';
+  let h = '<tr><th class="t">Condition</th><th>% of days</th><th>Annualised</th><th>Sharpe</th><th>+1m</th><th>+2m</th><th>+3m</th><th>+12m</th></tr>';
+  [['thin','Within 3% of a 5-year high, fewer than 57% rising'],['near_ok','Within 3% of a 5-year high, 57% or more rising'],['base','All days']].forEach(([k, t]) => { const s = W[k];
+    h += '<tr' + (k === 'base' ? ' class="base"' : '') + '><td class="t">' + t + '</td><td>' + nm(s.pct, 1) + '</td><td>' + pc(s.ann) + '</td><td>' + nm(s.sharpe, 2) + '</td><td>' + pc(s['1m']) + '</td><td>' + pc(s['2m']) + '</td><td>' + pc(s['3m']) + '</td><td>' + pc(s['12m']) + '</td></tr>'; });
+  $('tW').innerHTML = h;
+  $('fnW').innerHTML = 'The direction holds: on thin-participation days near a high the next one and two months averaged ' + pc(W.thin['1m']) + ' and ' + pc(W.thin['2m']) + ' against ' + pc(W.base['1m']) + ' and ' + pc(W.base['2m']) + ' for all days, and the annualised rate was ' + pc(W.thin.ann) + '. The size is not reliable: the placebo p-value is ' + nm(W.pl, 3) + ' and the setup covers only ' + nm(W.thin.pct, 1) + '% of days. Twelve months out the gap closes entirely. Treat it as a caution flag, not a signal.';
+})();
+(function log(){
+  let h = '<tr><th>Date</th><th class="t">Change</th><th>Score</th><th>Sessions<br>in the old state</th><th>S&P 500</th><th>+1m</th><th>+3m</th><th>+6m</th><th>+12m</th></tr>';
+  P.log.slice(0, 40).forEach(r => { h += '<tr><td>' + dfmt(r.d) + '</td><td class="t">' + stName[r.frm] + ' → <b>' + stName[r.to] + '</b></td><td>' + r.cnt + '</td><td>' + r.days + '</td><td>' + nm(r.px) + '</td><td>' + pc(r.f1m) + '</td><td>' + pc(r.f3m) + '</td><td>' + pc(r.f6m) + '</td><td>' + pc(r.f12m) + '</td></tr>'; });
+  $('tL').innerHTML = h;
+})();
+$('notes').innerHTML = [
+  '<b>What this is.</b> Nine momentum and trend conditions drawn from the attached checklist and charts, counted into one score the way the Breadth Thrust and Buy Signal Aggregators count their signals. The difference is that those models count dated events and hold them for a fixed window; these are states that are simply on or off each day, so the score needs no hold rule. The state is called on the ' + M.smooth + '-session average of the score, which is what the checklist means by stocks <i>consistently</i> holding above their averages.',
+  '<b>Alignment.</b> Every statistic reads a condition at the close and pairs it with the <i>next</i> session’s return. Published regime tables are usually contemporaneous, scoring a breadth reading against the same day’s move, which is circular: a day most stocks rise is a day the index rises. The Summation panel shows both so the size of that effect is visible.',
+  '<b>Breadth is rebuilt from index members.</b> The share above a 200-day average, the share with a rising 200-day average, the share in a correction, new highs and lows and the McClellan Summation Index are computed from point-in-time S&P 500 constituents on Yahoo split-adjusted closes, not from NYSE data. Membership comes from the fja05680 history rolled forward with Wikipedia’s current list.',
+  '<b>Validation.</b> On 7 January 2025, against the published chart: this reconstruction gives 51.35% of members above their 200-day average (chart: 51.49), 56.94% with a rising 200-day average (chart: 56.86) and the index 2.98% below its 5-year high (chart: 2.98).',
+  '<b>Coverage, and what it costs.</b> Yahoo drops delisted names, so priced members cover ' + M.cov_2000 + '% of the index in 2000, ' + M.cov_2010 + '% in 2010, ' + M.cov_2020 + '% in 2020 and ' + M.cov_last + '% now. Early breadth is therefore tilted towards survivors and reads too strong before about 2010. The halves columns are the check on this: they split each test at its own midpoint.',
+  '<b>Higher highs and higher lows.</b> Swing pivots are the highest and lowest closes of a centred ' + (2 * M.pivot_k + 1) + '-session window, so a pivot is only known ' + M.pivot_k + ' sessions after it prints. Waiting for confirmation on both sides reads badly at turns, so the condition is read as a chartist would: a close above the last confirmed swing high counts as a higher high straight away, and a close under the last confirmed swing low ends the run of higher lows straight away. Without that second rule the condition still reads <i>higher highs and higher lows</i> at the March 2020 low.',
+  '<b>The Summation condition is a flicker, not a regime.</b> Requiring the index to be above zero <i>and</i> rising turns it over 1,071 times since ' + M.evid_start.slice(0,4) + ', a median run of three sessions, against nine for higher highs and higher lows and fourteen for net new highs. Its lane in the top chart shows this directly. A condition that changes every few days cannot describe a trend, and that is part of why it scores worst of the nine.',
+  '<b>Thresholds are the published ones</b> — 52% above a 200-day average, 57% with a rising one, 40% in a correction, 3% from a 5-year high — not levels fitted here. The checklist’s 60% variant for members above their averages is drawn on the input chart for comparison. Because the levels are given, the screen tests whether they earn their place rather than searching for better ones.',
+  '<b>Why the participation conditions fail the screen.</b> They cut volatility sharply but cut return by more. Their off-days are concentrated in the washout lows of 2002, 2009, 2020, 2022 and April 2025, which were followed by the strongest rebounds in the sample, so a rule that stands aside while participation is thin misses them. That is a statement about this sample, in which every washout recovered quickly, and not a claim that thin participation is bullish.',
+  '<b>The cash leg</b> is the 13-week Treasury bill (^IRX) from ' + dfmt(M.cash_start) + '. Sharpe ratios are on excess returns; annualised figures are price returns and exclude dividends, costs and tax.',
+  '<b>Not investment advice.</b> The tables describe one index over one sample. The strongest result here — that a long-term average filter buys a large drawdown reduction for a small return give-up — is also the most widely known, and widely known edges are the ones most likely to be already in the price.'
+].map(t => '<li>' + t + '</li>').join('');
+
+drawAgg(); drawDet(); stateTable();
+</script>
+</body>
+</html>
