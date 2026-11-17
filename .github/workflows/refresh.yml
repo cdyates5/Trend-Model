@@ -1,0 +1,90 @@
+name: Refresh Momentum/Trend Aggregator
+
+on:
+  schedule:
+    # 22:30 UTC Tue-Sat: about 90 minutes after each settled US close (Mon-Fri).
+    # The Saturday run does the weekly full history download.
+    - cron: "30 22 * * 2-6"
+    # 1st of the month: keepalive commit so GitHub does not disable the schedule.
+    - cron: "0 3 1 * *"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Force a full history download (~8 minutes)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write        # keepalive commit
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      asof: ${{ steps.refresh.outputs.asof }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore price cache
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: mom-prices-v1-${{ github.run_id }}
+          restore-keys: mom-prices-v1-
+
+      - name: Refresh
+        id: refresh
+        env:
+          # Saturday (day 6) rebuilds the whole panel, which repairs any split the
+          # weekday top-up could not splice cleanly.
+          FORCE_FULL: ${{ github.event.inputs.full }}
+        run: |
+          ARGS=""
+          if [ "$FORCE_FULL" = "true" ] || [ "$(date -u +%u)" = "6" ]; then ARGS="--full"; fi
+          echo "running: python refresh.py $ARGS"
+          python refresh.py $ARGS
+          echo "asof=$(python -c "import json;print(json.load(open('cache/payload.json'))['meta']['asof'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Save price cache
+        if: steps.refresh.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: mom-prices-v1-${{ github.run_id }}
+
+      - name: Keepalive commit
+        if: github.event.schedule == '0 3 1 * *'
+        run: |
+          date -u +%Y-%m-%d > .keepalive
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          git commit -m "keepalive $(date -u +%Y-%m-%d)" || exit 0
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
